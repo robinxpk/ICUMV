@@ -1,0 +1,6 @@
+# Settings for the VSCode linter. Else, VSCode is quite noisy
+linters: with_defaults(
+  assignment_linter = NULL,        # Allow =
+  spaces_left_parentheses_linter = NULL,  # Don't complain about space before (
+  trailing_whitespace_linter = NULL  # Ignore trailing whitespace
+)
