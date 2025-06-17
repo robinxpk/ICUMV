@@ -1,41 +1,13 @@
 # Libraries ---
 library(ggplot2)
+source("consulting05-2025-mv/code/load_data_config.R")
+source("consulting05-2025-mv/code/load_data_functions.R")
 
-# Parameters ---
-sas_data_path = "sasdata/"
-sas_encoding = "latin1"
-out_data_path = "consulting05-2025-mv/data/"
-sistersite_codes = list(
-    "1" = "Canada",
-    "2" = "Austrialia and New Zealand",
-    "3" = "USA",
-    "4" = "Europe",
-    "5" = "Latin America",
-    "6" = "Asia"
-)
+lct <- Sys.getlocale("LC_TIME")
+Sys.setlocale("LC_TIME", "C")
+Sys.setlocale("LC_TIME", lct)
 
-# Functions ---
-add_to_be_removed = function(df_to_add, df_base, cause, comment = NULL){
-    return(
-        rbind(
-            df_base,
-            df_to_add |> 
-                dplyr::select(CombinedID) |> 
-                dplyr::mutate(
-                    cause = cause,
-                    comment = comment
-                )
-        )
-    )
-}
-
-# Note:
-# icuid: Unique ICU registration identifier. Same ICU will have different values on different years
-# combined_icu_id: ICU identifier that were same ICU has same values across years
-# sister_side: Indentifies geographic region of ICU (1. Canada, 2.Austrialia and New Zealand, 3. USA, 4.Europe, 5.Latin America and 5.Asia)
-
-# ICU seems less interesting, but maybe analysis by icuid interesting? 
-# Note: City names not properly read
+################################################## ICU ################################################## 
 icu = haven::read_sas(paste0(sas_data_path, "icuinfo.sas7bdat"), encoding = sas_encoding) |> 
     dplyr::mutate(
         sistersite_cntry = as.factor(sistersite_codes[sistersite] |> unlist() |> unname())
@@ -96,37 +68,18 @@ icu = haven::read_sas(paste0(sas_data_path, "icuinfo.sas7bdat"), encoding = sas_
 # # assess_dt and assess_tm to datetime object; Note: Some have NA in either entry
 
 
-patient = haven::read_sas(paste0(sas_data_path, "patientinfo.sas7bdat"), encoding = sas_encoding) 
-    # Fix Formatting:
+################################################## Patient ################################################## 
+# Following fully based on preproc-data Script. 
+# NOTE: This is not a general pipeline.
+    # That is, e.g. I removed parts of the sanity checks where the original code could not find any cases. 
 
-# daily = haven::read_sas(paste0(sas_data_path, "obsinfo.sas7bdat"), encoding = sas_encoding)
+patient = haven::read_sas(paste0(sas_data_path, "patientinfo.sas7bdat"), encoding = sas_encoding) |> 
+    # Fix colnames
+    rename_cols(rename_list = rename_list)
+    # Fix data encoding
+    # TODO:
+    # Encoding; wenn variable survival --> TRUE = survival (analog für dead)
 
-# PN seems giga useless
-# pn = haven::read_sas(paste0(sas_data_path, "pn_lipids_info.sas7bdat"), encoding = sas_encoding)
-
-# Difference patient and daily
-# -> Daily is more focused on nutrition
-patient |> 
-    # Obersavtions per icuid
-    dplyr::summarise(.by = c(year, icuid), n = dplyr::n())  |> 
-    # Check how often icuid is contained (i.e. does icuid appear in two or more different years)
-    dplyr::summarise(.by = icuid, n = dplyr::n())  |> 
-    dplyr::summarise(.by = n, dplyr::n())
-
-patient |> 
-    # Only if mv_start_yn = 0, MV has been started in icu
-    dplyr::filter(mv_start_yn == 0) |> 
-    dplyr::select(mvstartdt) |> 
-    dplyr::mutate(isna = is.na(mvstartdt)) |> 
-    dplyr::summarise(.by = isna, n = dplyr::n())
-    # That is:
-    # All patients that have not received MV prior to ICU have been MV'ed after entering ICU
-
-# For now, focus on ppl who entered icu without already being MV'ed
-# mv_in_icu = patient |> dplyr::filter(mv_start_yn == 0)
-# nrow(mv_in_icu)
-
-# names(mv_in_icu)
 # # Geographical data distribution
 # mv_in_icu = mv_in_icu |> 
 #     dplyr::left_join(
@@ -140,81 +93,6 @@ patient |>
 #         n = dplyr::n(), 
 #         .by = c(country, sex)
 #     )
-
-################################### PATIENT ####################################
-# Following fully based on preproc-data Script. 
-# NOTE: This is not a general pipeline.
-    # That is, e.g. I removed parts of the sanity checks where the original code could not find any cases. 
-#### rename variables - For now. The names are terrible, but used for now to re-create the filter in the preproc-data.R script
-patient.vars.old <- c(
-  "year"             , "combinedicuid" ,
-  "CombinedID",
-  "study_id"         , "sex"           ,
-  "age"              ,
-  "mv_start_yn"      , "admission_type",
-  "DiagID"           ,
-  "apache_score"     , "height"        ,
-  "weight"           , "bmi"           ,
-  "calsperkg"        , "protperkg",
-  "patientdied"      ,
-  "pt_die_icu_yn"    ,
-  "mv_discontinued_icu_yn"
-  )
-
-patient.vars.new <- c(
-  "Year"             , "CombinedicuID"     ,
-  "CombinedID_old",
-  "CombinedID"       , "Gender"            ,
-  "Age"              ,
-  "MechVentPrior"    , "AdmCatID"          ,
-  "DiagID"           ,
-  "ApacheIIScore"    , "Height"            ,
-  "Weight"           , "BMI"               ,
-  "Calories"         , "Protein"           ,
-  "PatientDied"      ,
-  "icuDischargeDeath",
-  "VentDisICU"
-  )
-
-# Another vector of names for time dependence variables. lol. 
-td.vars.old <- c(
-  "mvstartdt"         , "endt"              , "pndt"             ,
-  "hospadmindt"       , "icuadmindt"        , "deathdt"          ,
-  "icudischargedt"    , "hospdischargedt"   , "mvdiscontinuedt")
-
-td_vars_new <- c(
-  "MechVent"          , "enTime"            , "pnTime"           ,
-  "HospAdmissionDate" , "AdmissionDate"     , "PatientDeathTime" ,
-  "icuDischargeDate"  , "HospDischargeDate" , "ventDisTime")
-
-vars.to.rename <- c(patient.vars.old, td.vars.old)
-patient.td_vars_new <- c(patient.vars.new, td_vars_new)
-
-## first subset patient data
-# TODO: This subsetting seems giga ranom. Are variables left out that could be interesting?
-# patient <- patient[, vars.to.rename]
-
-# rename to fit old script, via loop since ordering is crucial
-for(i in seq_along(vars.to.rename) ) {
-  ind <- which(colnames(patient) == vars.to.rename[i])
-  colnames(patient)[ind] <- patient.td_vars_new[i]
-}
-
-lct <- Sys.getlocale("LC_TIME")
-Sys.setlocale("LC_TIME", "C")
-
-# check integrity of variables containing date information
-sapply(td_vars_new, function(x) {
-  tmp  <- patient[[x]]
-  tmp2 <- as.POSIXct(tmp, tz="CET")
-  if(any(is.na(tmp2)!= is.na(tmp))) browser()
-  patient[[x]] <<- tmp2
-  return(NULL)
-})
-
-Sys.setlocale("LC_TIME", lct)
-
-patient$CombinedID <- as.integer(gsub("_", "", patient$CombinedID))
 
 # Sanity Checks ---
 ## Patient - Data Set
@@ -298,6 +176,7 @@ removed_patient = patient |>
     )
 
 ### End Sanity Checks
+
 # Filter all patients to be removed:
 patient = patient |> 
     dplyr::filter(!CombinedID %in% removed_patient$CombinedID) 
@@ -367,7 +246,7 @@ patient = patient |>
         surv_icu0to60 = icudays, 
         # Alternative already contained in data:
         # surv_icu0to60 = ICUDAYS,  # already has 60+ transformed to 61 (i.e. loss of info. Note sure if I like)
-        # Compare information: test |> dplyr::select(ICUDAYS, icudays, diedInIcu) |> dplyr::mutate(diff = ICUDAYS - icudays) |> ggplot() + geom_point(aes(x = ICUDAYS, y = icudays))
+        # Compare information: patient |> dplyr::select(ICUDAYS, icudays, diedInIcu) |> dplyr::mutate(diff = ICUDAYS - icudays) |> ggplot() + geom_point(aes(x = ICUDAYS, y = icudays))
 
         surv_icu_status = dplyr::case_when(
           # Only observe event if patient died within icu AND within 60 days
@@ -388,7 +267,7 @@ patient = patient |>
         #   # Weird that ICUEvent is not 1 here..
         #   # TODO: Check with other: How to procede? Should we set ICUEvent to 1 where there has been icu discharge? 
         #   !is.na(icuDischargeDate) ~ 2 
-        # )
+        # ),
         # Date of beginning of MV is NA if prior to icu MV already applied. 
         # Following previous code, set date of MV to admission date then
 
@@ -399,6 +278,8 @@ patient = patient |>
           # Check: > patient |> dplyr::filter(MechVentPrior == 1) |> dplyr::select(AdmissionDate, MechVent, ventDisTime) |> dplyr::filter(is.na(ventDisTime))
           # Ppl who never were MV: table(is.na(patient$MechVent)) --> Those with no date at all
         mvDuration = difftime(ventDisTime, MechVent, units = "days"),
+        # TODO: Check if duration is set to 0 if NA 
+        # mvDuration = dplyr::if_else(is.na(mvDuration), .0, mvDuration),
         mvDurationCalenderdays = floor(mvDuration)
     ) 
 
@@ -430,19 +311,6 @@ patient |>
   dplyr::select(icuDischargeDate) |> 
   summary()
 
-# ### We use last_date_icu for these missing ones (all receive a 61L).
-# patient$Disc0To60[is.na(s0to60) & is.na(d0to60)] <- 61L
-# patient$AdCens <- ifelse(is.na(s0to60) & is.na(d0to60), 1, 0)
-# ### if we measured longer survival /discharge, we censor it to 61L.
-# ### We leave an indicator that we already censored these values.
-# ### (assumed to have survived, Note that we do not make further use of the
-# ### indicator.)
-# patient$Disc0To60[patient$Surv0To60 > 61 & (!is.na(patient$Surv0To60))] <- 61L
-# patient$Surv0To60[patient$Surv0To60 > 61 & (!is.na(patient$Surv0To60))] <- 61L
-# patient$PatientDied[patient$Surv0To60 > 61 & (!is.na(patient$Surv0To60))] <- 0L
-# patient$Disc0To60[patient$Disc0To60 > 61 & (!is.na(patient$Disc0To60))] <- 61L
-# patient$PatientDischarged <- ifelse(patient$PatientDied == 0 & patient$Disc0To60 < 61L & !is.na(patient$Disc0To60), 1, 0)
-
 #check
 table(patient$PatientDied, patient$surv_icu_status)
 # 1248 patients died but were released from icu prior to death -> status = 1
@@ -453,32 +321,12 @@ table(patient$PatientDied, patient$surv_icu_status)
 # There should not be any events (deah in icu) if patient does not die. This is not the case for our data, but old data seems to have it? 
 with(patient, table(surv_icu_status, PatientDied))
 # We now have 24 patient that were censored due to 60 day limit (insead of previous 5):
+
+# TODO: Vergleich mit dem alten Datensatz
 patient |> 
-  dplyr::filter(surv_icu_status == 0, icudays >= 61) |> dplyr::select(icudays) |> 
-  nrow()
-
-### Compute days in ICU
-# First create a variable that give last date time in ICU
-# TODO: Discuss: I think what the following code replaces days in icu where it could not be calculated
-  # That should be the case if date of death or day of icu discharge is missing
-  # i.e. the person is still on the icu when study ended, but has not died yet.
-  # The fuck is the following doing? Are they setting the duration to 61 days? That does not make sense...
-# last_date_icu <- patient$icuDischargeDate
-# last_date_icu[is.na(last_date_icu) & patient$PatientDied == 1] <-
-#   patient$PatientDeathTime[is.na(last_date_icu) & patient$PatientDied == 1]
-
-# last_date_icu[is.na(last_date_icu)] <-
-#   patient$AdmissionDate[is.na(last_date_icu)] + days(61L)
-# patient$last_date_icu <- last_date_icu
-# patient$DaysInICU <-
-#   as.numeric(with(patient,
-#                   difftime(last_date_icu, AdmissionDate, units = "days")))
-# # check variable
-# checkmate::assert_numeric(patient$icudays, lower = 0, min.len = 1, any.missing = FALSE,
-#   finite = TRUE)
+  dplyr::filter(icudays >= 61, PatientDied == 1) 
 
 
-# TODO: Discuss: What does old code to with MV? 
 
 
 # Final cleaning or trafos
@@ -530,7 +378,7 @@ removed_patient = patient |>
 # i.e. Who died AND did not spend at least 5 days in icu
 removed_patient = patient |> 
   dplyr::filter(PatientDied == 1) |> 
-  dplyr::filter(icuCalenderdays < 5)
+  dplyr::filter(icuCalenderdays < 5) |> 
   add_to_be_removed(
       df_base = removed_patient, 
       cause = "excluded", 
@@ -547,5 +395,3 @@ patient = patient |>
 
 saveRDS(patient, file = "consulting05-2025-mv/data/patient.Rds")
 saveRDS(removed_patient, file = "consulting05-2025-mv/data/removed_patient.Rds")
-
-
