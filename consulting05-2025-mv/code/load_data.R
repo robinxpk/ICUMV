@@ -8,65 +8,11 @@ Sys.setlocale("LC_TIME", "C")
 Sys.setlocale("LC_TIME", lct)
 
 ################################################## ICU ################################################## 
-icu = haven::read_sas(paste0(sas_data_path, "icuinfo.sas7bdat"), encoding = sas_encoding) |> 
-    dplyr::mutate(
-        sistersite_cntry = as.factor(sistersite_codes[sistersite] |> unlist() |> unname())
-    )
-
-# # Correct types ---
-# # lookup_list = NULL --> Leave variable itself unchanged, but change type
-# triplets = list(
-#     list(col = "icuid", type = "factor", lookup_list = NULL),
-#     list(col = "combinedicuid", type = "factor", lookup_list = NULL),
-#     list(col = "CombinedID", type = "factor", lookup_list = NULL),
-#     list(col = "sistersite", type = "factor", lookup_list = NULL),
-#     list(col = "sex", type = "factor", lookup_list = list("1" = "male", "2" = "female")),
-#     list(col = "mv_start_yn", type = "factor", lookup_list = list("1" = TRUE, "0" = FALSE)),
-#     list(col = "admission_type", type = "factor", lookup_list = list("1" = "medical", "2" = "surgical elective", "3" = "surgical emergency")), # TODO Change to: 1 - Medical, 2 - Surgical Elective, 3 - Surgical Emergency
-#     list(col = "DiagID", type = "factor", lookup_list = NULL), # Primary ICU diagnosis. Not sure what values are possible... bzw. to what they correspond
-#     list(col = "comorbidities_yn", type = "logical", lookup_list = NULL), # Comorbidities = simultaneous presence of two or more medical conditions or disorders in the same individual; TODO: Change to TRUE and FALSE
-#     list(col = "glucose_units", type = "factor", lookup_list = NULL), # Measurement units. Use factor to make sure there are only a certain number of units allowed
-#     list(col = "blood_sugar_yn", type = "logical", lookup_list = NULL), # TODO change to T and F
-#     list(col = "apache_na___1", type = "logical", lookup_list = NULL), # TODO change to T and F
-#     list(col = "sofa_vasopressors_yn", type = "logical", lookup_list = NULL), # TODO change to T and F
-#     list(col = "sofa_gcs_yn", type = "logical", lookup_list = NULL), # TODO change to T and F
-#     list(col = "sofa_score_complete", type = "logical", lookup_list = NULL), # TODO change to T and F
-#     list(col = "weight_type_oth", type = "factor", lookup_list = NULL), 
-#     list(col = "weight_type", type = "factor", lookup_list = NULL), 
-#     list(col = "energy_req_yn", type = "logical", lookup_list = NULL) # Change to T and F
-# )
-# for (triplet in triplets){
-#     entries = patient[, triplet$col] |> unlist()
-#     browser()
-#     if (triplet$type == "factor") patient[, triplet$col] = as.factor(entries, order = triplet$lookup_list)
-#     else if (triplet$type == "logical") patient[, triplet$col]  = as.logical(entries)
-# }
-
-
-# com_myocardial___? = "logical", # TODO Change to TRUE and FALSE __or__ merge into one column; check attr(*, "label") to see what choice
-# list(col = "com_myocardial", type = "multifactor", lookup_list = NULL)
-# # Grouping multiple columns into new cols
-# patient |> dplyr::select(contains("com_myocardial")) |> names()
-# patient |> dplyr::select(contains("com_myocardial")) |> rowSums() |> table() # Multiple states possible
-
-# # 
-# com_neurologic___? = "logical", # TODO same as above
-# patient |> dplyr::select(contains("com_neurologic")) |> names()
-# patient |> dplyr::select(contains("com_neurologic")) |> rowSums() |> table()
-
-# com_vascular___? = "logical", # TODO same as above
-# com_pulmonary___? = "logical", # TODO same as above
-# com_endocrine = "logical",# TODO same as above
-# com_endocrine___? = "logical", # TODO same as above
-# com_renal___? = "logical", 
-# com_gastrointestinal___? = "logical", # TODO same as above
-# com_cancer_immune___?  = "logical", # TODO same as above
-# com_psychological___? = "logical", # TODO same as above
-# com_muskoskeletal___? = "logical", # TODO same as above
-# com_substance___? = "logical", # TODO same as above
-# com_miscellaneous___? = "logical", # TODO same as above
-# # assess_dt and assess_tm to datetime object; Note: Some have NA in either entry
-
+icu = haven::read_sas(paste0(sas_data_path, "icuinfo.sas7bdat"), encoding = sas_encoding) 
+    # # Fix colnames
+    # rename_cols(rename_list = patient_rename_list) |> 
+    # # Fix data encoding
+    # encode_cols(encoding_triplets = patient_encoding_triplets)
 
 ################################################## Patient ################################################## 
 # Following fully based on preproc-data Script. 
@@ -75,39 +21,26 @@ icu = haven::read_sas(paste0(sas_data_path, "icuinfo.sas7bdat"), encoding = sas_
 
 patient = haven::read_sas(paste0(sas_data_path, "patientinfo.sas7bdat"), encoding = sas_encoding) |> 
     # Fix colnames
-    rename_cols(rename_list = rename_list)
+    rename_cols(rename_list = patient_rename_list) |> 
     # Fix data encoding
-    # TODO:
-    # Encoding; wenn variable survival --> TRUE = survival (analog für dead)
-
-# # Geographical data distribution
-# mv_in_icu = mv_in_icu |> 
-#     dplyr::left_join(
-#         icu |> dplyr::select(icuid, sistersite_cntry),
-#         by = "icuid"
-#     ) |> 
-#     dplyr::rename(country = sistersite_cntry)
-# table(mv_in_icu$country)
-# mv_in_icu |> 
-#     dplyr::summarise(
-#         n = dplyr::n(), 
-#         .by = c(country, sex)
-#     )
+    encode_cols(encoding_triplets = patient_encoding_triplets)
+# In case you want to check csv file containing the encodings (which is more easily to read)
+# describe_variables(df = patient, df_name = "patient", output_file = "describe_patient.csv")
 
 # Sanity Checks ---
 ## Patient - Data Set
 # Initially: 21_100 rows = patients
 removed_patient = tibble::tibble(
-    CombinedID= character(),
+    combined_id = character(),
     cause = character(),
     comment = character()
 )
-# TODO: Check if there are duplicates in removed_patient i.e. multiple reasons for a patient to be removed. Curious.
+# TODO: Out of interest: Check if there are duplicates in removed_patient i.e. multiple reasons for a patient to be removed. Curious.
 # Remove Patients with td_vars_new incosistencies 
 # 1) MV discontinuation before or equal to MV start
 removed_patient = patient |> 
     # dplyr::filter(MechVent >= ventDisTime, !is.na(MechVent >= ventDisTime))
-    dplyr::filter(MechVent >= ventDisTime) |> 
+    dplyr::filter(mv_start_date >= mv_discontinued_date) |> 
     add_to_be_removed(
         df_base = removed_patient, 
         cause = "inconsistent", 
@@ -117,7 +50,7 @@ removed_patient = patient |>
 # 2) ICU admission before hospital admission
 # -> 4 patient which we just remove
 removed_patient = patient |> 
-    dplyr::filter(AdmissionDate < HospAdmissionDate) |> 
+    dplyr::filter(icu_admission_date < hospital_admission_date) |> 
     add_to_be_removed(
         df_base = removed_patient, 
         cause = "inconsistent", 
@@ -128,14 +61,14 @@ removed_patient = patient |>
 # 5 patients discharged from hospital before being discharged from icu.
 # 2 seem to be just inaccurateley timed in the system. Keep them.
 patient |> 
-    dplyr::filter(HospDischargeDate < icuDischargeDate) |> 
-    dplyr::select(CombinedID, HospDischargeDate, icuDischargeDate) |> 
-    dplyr::mutate(time_diff = icuDischargeDate - HospDischargeDate) 
+    dplyr::filter(hospital_discharge_date < icu_discharge_date) |> 
+    dplyr::select(combined_id, hospital_discharge_date, icu_discharge_date) |> 
+    dplyr::mutate(time_diff = icu_discharge_date - hospital_discharge_date) 
 
 removed_patient = patient |> 
-    dplyr::filter(HospDischargeDate < icuDischargeDate) |> 
-    dplyr::select(CombinedID, HospDischargeDate, icuDischargeDate) |> 
-    dplyr::mutate(time_diff = icuDischargeDate - HospDischargeDate) |> 
+    dplyr::filter(hospital_discharge_date < icu_discharge_date) |> 
+    dplyr::select(combined_id, hospital_discharge_date, icu_discharge_date) |> 
+    dplyr::mutate(time_diff = icu_discharge_date - hospital_discharge_date) |> 
     dplyr::filter(time_diff > 3) |> 
     add_to_be_removed(
         df_base = removed_patient, 
@@ -145,7 +78,7 @@ removed_patient = patient |>
 
 # 4) MV discontinuation before admission?
 removed_patient = patient |> 
-    dplyr::filter(ventDisTime < AdmissionDate) |> 
+    dplyr::filter(mv_discontinued_date < icu_admission_date) |> 
     add_to_be_removed(
         df_base = removed_patient, 
         cause = "inconsistent", 
@@ -154,21 +87,21 @@ removed_patient = patient |>
 
 # 5) Remove patients with missing indication of death/survival
 patient |> 
-    dplyr::filter(is.na(PatientDied))
+    dplyr::filter(is.na(has_died))
 
 # 6) Missing BMI
 # TODO: Apply if necessary 
 patient |> 
-    dplyr::filter(is.na(BMI))
+    dplyr::filter(is.na(bmi))
 
 # 7) Missing AII Score
 # TODO: Apply if necessary
 patient |> 
-    dplyr::filter(is.na(ApacheIIScore))
+    dplyr::filter(is.na(apache_score))
 
 # 8) Missing Sex (only 3 patient have missing sex. Just remove them.)
 removed_patient = patient |> 
-    dplyr::filter(is.na(Gender)) |> 
+    dplyr::filter(is.na(sex)) |> 
     add_to_be_removed(
         df_base = removed_patient, 
         cause = "incomplete", 
@@ -179,29 +112,10 @@ removed_patient = patient |>
 
 # Filter all patients to be removed:
 patient = patient |> 
-    dplyr::filter(!CombinedID %in% removed_patient$CombinedID) 
+    dplyr::filter(!combined_id %in% removed_patient$combined_id) 
 
 
-# Fix data encoding
-patient = patient |> 
-    dplyr::mutate(
-        DiagID = as.factor(
-            dplyr::case_when(
-                # Mapping comes from old code; line 385ff
-                DiagID %in% c(1:9, 50:54, 52.1, 52.2) ~ "cardio-vascular", 
-                DiagID %in% c(10:19, 57:58) ~ "respiratory",
-                DiagID %in% c(21:27, 61:68) ~ "gastrointestinal",
-                DiagID %in% c(29:35, 70:74) ~ "neurologic",
-                DiagID %in% c(37, 38, 82:85) ~ "sepsis",
-                DiagID %in% c(39, 40, 76, 77, 81) ~ "orthopedic/trauma",
-                DiagID %in% c(41:43) ~ "metabolic",
-                DiagID %in% c(47, 78) ~ "renal",
-                TRUE ~ "other"
-            )
-        )
-    ) 
-
-# Redefine diagnosis variable according to report docu
+# Create own new variables
 patient = patient |> 
     dplyr::mutate(
         # Calculate survival time:
@@ -209,11 +123,15 @@ patient = patient |>
         # We define discharge from hospital as the LATEST measured discharge event
         # in case there were discrepancies. However discharge from hospital must
         # have been tracked.
-        Surv0To60 = PatientDeathTime - AdmissionDate, # NOTE: Admission date is date of admission IN ICU!! 
-        # Calculate discharge time:
+        # survival_time = death_date - icu_admission_date,
+        # Surv0To60 = PatientDeathTime - AdmissionDate, # NOTE: Admission date is date of admission IN ICU!! 
+
+        # Calculate discharge time from icu:
             # This is discharge FROM ICU! 
             # Note: Patient may have died but have been discharge from ICU prior to their death
-        Disc0To60 = icuDischargeDate - AdmissionDate,
+        
+        # Disc0To60 = icuDischargeDate - AdmissionDate,
+
         # Calculate time until death in icu: 
         # TODO: Following is copied from old code. Encoding is shit tho... Fix later
 
@@ -240,18 +158,20 @@ patient = patient |>
         # lol...
 
         # Discharged from icu:
-        diedInIcu = is.na(icuDischargeDate), # If NA, then Person died in icu --> no discharge date
-        icudays = dplyr::if_else(diedInIcu == TRUE, PatientDeathTime - AdmissionDate, icuDischargeDate - AdmissionDate),
-        icuCalenderdays = floor(icudays), 
-        surv_icu0to60 = icudays, 
+        # TODO: sas-data contains has_died_in_icu; compare
+            # -> Would like to rely on own variable because I do not fully understand sas variable. 
+        died_in_icu = icu_discharge_date < death_date,  # If NA, then Person died in icu --> no discharge date
+        icu_days = dplyr::if_else(died_in_icu == TRUE, death_date - icu_admission_date, icu_discharge_date - icu_admission_date),
+        icu_calender_days = floor(icu_days), 
+        # surv_icu0to60 = icudays, 
         # Alternative already contained in data:
         # surv_icu0to60 = ICUDAYS,  # already has 60+ transformed to 61 (i.e. loss of info. Note sure if I like)
         # Compare information: patient |> dplyr::select(ICUDAYS, icudays, diedInIcu) |> dplyr::mutate(diff = ICUDAYS - icudays) |> ggplot() + geom_point(aes(x = ICUDAYS, y = icudays))
 
-        surv_icu_status = dplyr::case_when(
+        has_died_icu_status = dplyr::case_when(
           # Only observe event if patient died within icu AND within 60 days
-          diedInIcu == TRUE & icudays < 61 ~ 1,
-          TRUE ~ 0
+          died_in_icu == TRUE & icu_days < 61 ~ TRUE,
+          TRUE ~ FALSE
         ),
         # surv_icu_status = dplyr::case_when(
         #   # If survived: censored 
@@ -271,68 +191,61 @@ patient = patient |>
         # Date of beginning of MV is NA if prior to icu MV already applied. 
         # Following previous code, set date of MV to admission date then
 
-        MechVent = dplyr::if_else(MechVentPrior == 1, AdmissionDate, MechVent),
+        mv_start_date = dplyr::if_else(has_mv_before_icu == 1, icu_admission_date, mv_start_date),
 
         # TODO: Some ppl do not have a ventDisTime, but a MechVent time. Is this censored bc at end of study still MV? 
           # But weird bc MV started 2007
           # Check: > patient |> dplyr::filter(MechVentPrior == 1) |> dplyr::select(AdmissionDate, MechVent, ventDisTime) |> dplyr::filter(is.na(ventDisTime))
           # Ppl who never were MV: table(is.na(patient$MechVent)) --> Those with no date at all
-        mvDuration = difftime(ventDisTime, MechVent, units = "days"),
+        mv_duration = difftime(mv_discontinued_date, mv_start_date, units = "days"),
         # TODO: Check if duration is set to 0 if NA 
         # mvDuration = dplyr::if_else(is.na(mvDuration), .0, mvDuration),
-        mvDurationCalenderdays = floor(mvDuration)
+        mv_duration_calender_days= floor(mv_duration)
     ) 
 
 # Check if MV duration is correct:
 # TODO: Discuss this approach with the others! 
 patient |> 
-  dplyr::mutate(issue = mvDurationCalenderdays > icuCalenderdays) |> 
+  dplyr::mutate(issue = mv_duration_calender_days > icu_calender_days) |> 
   ggplot() + 
-  geom_point(aes(x = mvDurationCalenderdays, y = icuCalenderdays, color = issue)) 
+  geom_point(aes(x = mv_duration_calender_days, y = icu_calender_days, color = issue)) 
 # Problem: ppl may be longer ventilated than they are on icu. 
 # Solution? Set ventDisTime to Discharge date and set vent days to icu days? 
 patient |> 
-  dplyr::mutate(issue = mvDurationCalenderdays > icuCalenderdays) |> 
+  dplyr::mutate(issue = mv_duration_calender_days > icu_calender_days) |> 
   dplyr::filter(issue == T) |>  
-  dplyr::select(AdmissionDate, MechVent, icuDischargeDate, ventDisTime, icuCalenderdays, mvDurationCalenderdays) |> 
+  dplyr::select(icu_admission_date, mv_start_date, icu_discharge_date, mv_discontinued_date, icu_calender_days, mv_duration) |> 
   View()
 
-# Check how many missing events exist:
+# Check how many missing events exist, i.e. for how many ppl we neither have a date of icu discharge nor a time of death
 patient |> 
-  dplyr::filter(is.na(Surv0To60), is.na(Disc0To60)) |> 
+  dplyr::filter(is.na(death_date), is.na(icu_discharge_date)) |> 
   nrow()
 # --> We have 1163 observations where patient has neither been discharge nor died
 # NOTE: Old data set was 1117. This should be due to different filter methods. 
 # TODO: Check when time
 
 # For all, we find a missing discharge date, however, we know that ALL survived. ---> TODO: What does that even mean??
-patient |> 
-  dplyr::filter(is.na(Surv0To60), is.na(Disc0To60)) |> 
-  dplyr::select(icuDischargeDate) |> 
-  summary()
+# TODO: Move this logic into the mutate logic from above after fully understanding it first tho
+patient = patient |> 
+  dplyr::mutate(
+    icu_days = dplyr::if_else(is.na(death_date) & is.na(icu_discharge_date), lubridate::ddays(61), icu_days) # 61 bc we censor after 60 days
+  )  
 
 #check
-table(patient$PatientDied, patient$surv_icu_status)
+table(patient$has_died, patient$has_died_icu_status)
 # 1248 patients died but were released from icu prior to death -> status = 1
 # 3771 patients died while at icu -> status 2
 # 5 patients who died but after 60 days -> admistrative censoring
 
 # TODO: No idea what previous logic does. lol. 
 # There should not be any events (deah in icu) if patient does not die. This is not the case for our data, but old data seems to have it? 
-with(patient, table(surv_icu_status, PatientDied))
 # We now have 24 patient that were censored due to 60 day limit (insead of previous 5):
-
-# TODO: Vergleich mit dem alten Datensatz
-patient |> 
-  dplyr::filter(icudays >= 61, PatientDied == 1) 
-
-
-
 
 # Final cleaning or trafos
 # TODO: Filter if necessary:
 patient |> 
-  dplyr::filter(ApacheIIScore > 71) |> 
+  dplyr::filter(apache_score > 71) |> 
   add_to_be_removed(
       df_base = removed_patient, 
       cause = "unrealistic", 
@@ -367,7 +280,7 @@ mindays.icu   = 4 # minimal number of days spent on ICU after ICU admission
 
 # Filter those who did not spend at least 4 days in icu
 removed_patient = patient |> 
-  dplyr::filter(icuCalenderdays < 4) |> 
+  dplyr::filter(icu_calender_days < 4) |> 
   add_to_be_removed(
       df_base = removed_patient, 
       cause = "excluded", 
@@ -377,8 +290,8 @@ removed_patient = patient |>
 # Filter those who died within the first 5 days of icu admission
 # i.e. Who died AND did not spend at least 5 days in icu
 removed_patient = patient |> 
-  dplyr::filter(PatientDied == 1) |> 
-  dplyr::filter(icuCalenderdays < 5) |> 
+  dplyr::filter(has_died == TRUE) |> 
+  dplyr::filter(icu_calender_days < 5) |> 
   add_to_be_removed(
       df_base = removed_patient, 
       cause = "excluded", 
@@ -387,11 +300,11 @@ removed_patient = patient |>
 
 # Filter under age patients (none)
 patient |> 
-  dplyr::filter(Age < 18)
+  dplyr::filter(age < 18)
 
 # Remove: 
 patient = patient |> 
-    dplyr::filter(!CombinedID %in% removed_patient$CombinedID) 
+    dplyr::filter(!combined_id %in% removed_patient$combined_id) 
 
 saveRDS(patient, file = "consulting05-2025-mv/data/patient.Rds")
 saveRDS(removed_patient, file = "consulting05-2025-mv/data/removed_patient.Rds")
